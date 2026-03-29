@@ -1,65 +1,172 @@
-import Image from "next/image";
+import { db } from "@/lib/db";
+import { OfferCard } from "@/components/ui/OfferCard";
+import { RecipeCard } from "@/components/ui/RecipeCard";
+import Link from "next/link";
 
-export default function Home() {
+export const revalidate = 3600;
+
+async function getBestOffers() {
+  const offers = await db.offer.findMany({
+    where: { isActive: true },
+    orderBy: { discountPercentage: "desc" },
+    take: 6,
+    include: { supermarket: true, category: true },
+  });
+  return offers.map((o) => ({
+    ...o,
+    currentPrice: Number(o.currentPrice),
+    previousPrice: o.previousPrice ? Number(o.previousPrice) : null,
+    startDate: o.startDate?.toISOString() ?? null,
+    endDate: o.endDate?.toISOString() ?? null,
+    scrapedAt: o.scrapedAt.toISOString(),
+  }));
+}
+
+async function getRecipes() {
+  const recipes = await db.recipe.findMany({
+    include: {
+      ingredients: {
+        include: {
+          ingredient: {
+            include: {
+              productMatches: {
+                where: { offer: { isActive: true } },
+                take: 1,
+              },
+            },
+          },
+        },
+      },
+    },
+    take: 4,
+  });
+  return recipes.map((r) => ({
+    ...r,
+    offersOnSale: r.ingredients.filter(
+      (i) => i.ingredient.productMatches.length > 0
+    ).length,
+  }));
+}
+
+async function getStats() {
+  const [totalOffers, totalRecipes, bestDiscount] = await Promise.all([
+    db.offer.count({ where: { isActive: true } }),
+    db.recipe.count(),
+    db.offer.findFirst({
+      where: { isActive: true },
+      orderBy: { discountPercentage: "desc" },
+      select: { discountPercentage: true },
+    }),
+  ]);
+  return { totalOffers, totalRecipes, bestDiscount: bestDiscount?.discountPercentage ?? 0 };
+}
+
+export default async function Home() {
+  const [offers, recipes, stats] = await Promise.all([
+    getBestOffers(),
+    getRecipes(),
+    getStats(),
+  ]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="flex flex-col gap-12">
+
+      {/* Hero */}
+      <section className="text-center py-10">
+        <h1 className="text-4xl font-bold text-gray-900 mb-3">
+          Ahorrá en el súper 🛒
+        </h1>
+        <p className="text-gray-500 text-lg max-w-xl mx-auto mb-8">
+          Las mejores ofertas de Coto, Jumbo y Carrefour.<br />
+          Recetas con lo que está en oferta hoy.
+        </p>
+
+        {/* Buscador rápido */}
+        <Link href="/ofertas">
+          <div className="max-w-md mx-auto flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer">
+            <span className="text-gray-400">🔍</span>
+            <span className="text-gray-400 text-sm">Buscá un producto...</span>
+          </div>
+        </Link>
+      </section>
+
+      {/* Stats */}
+      <section className="grid grid-cols-3 gap-4">
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 text-center">
+          <p className="text-3xl font-bold text-emerald-600">{stats.totalOffers}</p>
+          <p className="text-sm text-gray-500 mt-1">ofertas activas</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 text-center">
+          <p className="text-3xl font-bold text-emerald-600">
+            -{Math.round(stats.bestDiscount)}%
           </p>
+          <p className="text-sm text-gray-500 mt-1">mejor descuento</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="bg-white rounded-2xl border border-gray-100 p-5 text-center">
+          <p className="text-3xl font-bold text-emerald-600">{stats.totalRecipes}</p>
+          <p className="text-sm text-gray-500 mt-1">recetas económicas</p>
         </div>
-      </main>
+      </section>
+
+      {/* Accesos rápidos */}
+      <section className="grid grid-cols-3 gap-3">
+        <Link href="/ofertas?sort=discount">
+          <div className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 rounded-2xl p-4 transition-colors cursor-pointer">
+            <p className="text-2xl mb-2">🏷️</p>
+            <p className="font-semibold text-emerald-800 text-sm">Mayores descuentos</p>
+            <p className="text-xs text-emerald-600 mt-0.5">Ver ofertas →</p>
+          </div>
+        </Link>
+        <Link href="/recetas">
+          <div className="bg-orange-50 hover:bg-orange-100 border border-orange-100 rounded-2xl p-4 transition-colors cursor-pointer">
+            <p className="text-2xl mb-2">🍳</p>
+            <p className="font-semibold text-orange-800 text-sm">Recetas del día</p>
+            <p className="text-xs text-orange-600 mt-0.5">Con lo que está en oferta →</p>
+          </div>
+        </Link>
+        <Link href="/comparador">
+          <div className="bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-2xl p-4 transition-colors cursor-pointer">
+            <p className="text-2xl mb-2">⚖️</p>
+            <p className="font-semibold text-blue-800 text-sm">Comparar precios</p>
+            <p className="text-xs text-blue-600 mt-0.5">Coto vs Jumbo vs Carrefour →</p>
+          </div>
+        </Link>
+      </section>
+
+      {/* Mejores ofertas */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-gray-800">
+            Mejores ofertas del día
+          </h2>
+          <Link href="/ofertas" className="text-sm text-emerald-600 hover:underline">
+            Ver todas →
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {offers.map((offer) => (
+            <OfferCard key={offer.id} offer={offer} />
+          ))}
+        </div>
+      </section>
+
+      {/* Recetas */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-gray-800">
+            Recetas con lo que está en oferta
+          </h2>
+          <Link href="/recetas" className="text-sm text-emerald-600 hover:underline">
+            Ver todas →
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {recipes.map((recipe) => (
+            <RecipeCard key={recipe.id} recipe={recipe} />
+          ))}
+        </div>
+      </section>
+
     </div>
   );
 }

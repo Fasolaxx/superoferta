@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Supermarket {
+  id      Int     @id @default(autoincrement())
+  name    String
+  slug    String  @unique
+  logoUrl String? @map("logo_url")
+  offers  Offer[]
+  @@map("supermarkets")
+}
+
+model Category {
+  id     Int     @id @default(autoincrement())
+  name   String
+  slug   String  @unique
+  offers Offer[]
+  @@map("categories")
+}
+
+model Offer {
+  id                 Int            @id @default(autoincrement())
+  supermarketId      Int            @map("supermarket_id")
+  categoryId         Int?           @map("category_id")
+  title              String
+  currentPrice       Decimal        @map("current_price") @db.Decimal(10, 2)
+  previousPrice      Decimal?       @map("previous_price") @db.Decimal(10, 2)
+  discountPercentage Float?         @map("discount_percentage")
+  promoType          String?        @map("promo_type")
+  imageUrl           String?        @map("image_url")
+  productUrl         String?        @map("product_url")
+  startDate          DateTime?      @map("start_date")
+  endDate            DateTime?      @map("end_date")
+  location           String?
+  scrapedAt          DateTime       @default(now()) @map("scraped_at")
+  isActive           Boolean        @default(true) @map("is_active")
+  supermarket        Supermarket    @relation(fields: [supermarketId], references: [id])
+  category           Category?      @relation(fields: [categoryId], references: [id])
+  productMatches     ProductMatch[]
+  @@map("offers")
+}
+
+model Recipe {
+  id          Int                @id @default(autoincrement())
+  name        String
+  description String?
+  imageUrl    String?            @map("image_url")
+  prepMinutes Int?               @map("prep_minutes")
+  servings    Int?
+  ingredients RecipeIngredient[]
+  @@map("recipes")
+}
+
+model Ingredient {
+  id             Int                @id @default(autoincrement())
+  name           String
+  normalizedName String             @map("normalized_name")
+  category       String?
+  recipes        RecipeIngredient[]
+  productMatches ProductMatch[]
+  @@map("ingredients")
+}
+
+model RecipeIngredient {
+  recipeId     Int        @map("recipe_id")
+  ingredientId Int        @map("ingredient_id")
+  quantity     String?
+  unit         String?
+  recipe       Recipe     @relation(fields: [recipeId], references: [id])
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  @@id([recipeId, ingredientId])
+  @@map("recipe_ingredients")
+}
+
+model ProductMatch {
+  offerId      Int        @map("offer_id")
+  ingredientId Int        @map("ingredient_id")
+  confidence   Float      @default(1.0)
+  matchedAt    DateTime   @default(now()) @map("matched_at")
+  offer        Offer      @relation(fields: [offerId], references: [id])
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  @@id([offerId, ingredientId])
+  @@map("product_matches")
+}
