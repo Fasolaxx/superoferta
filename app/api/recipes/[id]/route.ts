@@ -3,10 +3,11 @@ import { db } from "@/lib/db";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const recipe = await db.recipe.findUnique({
-    where: { id: Number(params.id) },
+    where: { id: Number(id) },
     include: {
       ingredients: {
         include: {
@@ -15,7 +16,7 @@ export async function GET(
               productMatches: {
                 where: { offer: { isActive: true } },
                 include: { offer: { include: { supermarket: true } } },
-                orderBy: { offer: { discountPercentage: "desc" } },
+                orderBy: { confidence: "desc" },
                 take: 1,
               },
             },
